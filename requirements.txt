@@ -1,0 +1,2 @@
+PyGreSQL==5.0.6
+urwid==2.0.1
