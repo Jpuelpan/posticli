@@ -5,7 +5,7 @@ db = DB(dbname='follow-api', host='localhost',
 
 def get_table_names():
     tables = db.get_tables()
-    return list(map(lambda x: x.split('.')[1], tables))
+    return list(map(lambda x: x.split('.')[1].replace('"', ''), tables))
 
 def get_table_structure(table_name):
     return db.get_attnames(table_name)

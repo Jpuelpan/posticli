@@ -1,7 +1,6 @@
 import urwid
 import db
 
-
 def exit_on_q(input):
     if input in ('q', 'Q'):
         raise urwid.ExitMainLoop()
@@ -13,7 +12,7 @@ class SelectableText(urwid.Text):
     def keypress(self, size, key):
         return key
 
-class PostcliListBox(urwid.ListBox):
+class CommonListBoxWidget(urwid.ListBox):
     def keypress(self, size, key):
         exit_on_q(key)
 
@@ -24,62 +23,102 @@ class PostcliListBox(urwid.ListBox):
 
         super().keypress(size, key)
 
-def get_tables_list():
-    return list(map(
-        lambda x: urwid.AttrMap(SelectableText(x), '', 'item_active'),
-        db.get_table_names()
-    ))
+class LeftPanelWidget(urwid.WidgetWrap):
+    """
+    Creates a list for the current tables of the selected database
+    wrapping it in a LineBox
+    """
+    signals = ['change']
 
-# def left_panel():
+    def __init__(self):
+        tableslist = urwid.SimpleListWalker(self.get_tables_list())
+        listbox = CommonListBoxWidget(tableslist)
 
-class LeftPanel(urwid.WidgetWrap):
-    def __init__(self, *args, **kw):
-        print('AHHH')
-        # super(LeftPanel, self).__init__(*args, **kw)
-        # self.redraw()
+        self.widget = urwid.LineBox(
+            listbox,
+            title="Tables"
+        )
 
-class MainWidget(urwid.WidgetWrap):
-    def __init__(self, widgets, **options):
-        self.display_widget = urwid.Columns(widgets, **options)
-        urwid.WidgetWrap.__init__(self, self.display_widget)
+        def changed(**args):
+            selected_table, *tail = tableslist.get_focus()[0].base_widget.get_text() 
+            urwid.emit_signal(self, 'change', selected_table)
+
+        urwid.connect_signal(tableslist, 'modified', changed)
+        urwid.WidgetWrap.__init__(self, self.widget)
+
+    def get_tables_list(self):
+        """
+        Returns a list of SelectableText widgets with the table names
+        from the database
+        """
+        return list(map(
+            lambda x: urwid.AttrMap(SelectableText(x), '', 'item_active'),
+            db.get_table_names()
+        ))
+
+class RightPanelWidget(urwid.WidgetWrap):
+
+    def __init__(self):
+        self.text = urwid.Text('No table selected')
+
+        self.widget = urwid.LineBox(
+            urwid.Filler(self.text)
+        ) 
+
+        urwid.WidgetWrap.__init__(self, self.widget)
 
     def keypress(self, size, key):
-        # print(self.display_widget.focus)
+        return key
+
+    def redraw(self, table_name):
+        self.text.set_text(table_name)
+
+    def on_table_change(self, table_name):
+        self.redraw(table_name)
+        self.widget.set_title(table_name)
+
+class MainWidget(urwid.WidgetWrap):
+    """
+    Initializes a Columns widgets holding the left and right panels
+    """
+
+    def __init__(self):
+        left_panel = LeftPanelWidget()
+        right_panel = RightPanelWidget()
+
+        urwid.connect_signal(left_panel, 'change', right_panel.on_table_change)
+
+        self.widget = urwid.Columns(
+            [
+                (30, left_panel),
+                right_panel
+            ],
+        )
+
+        urwid.WidgetWrap.__init__(self, self.widget)
+
+    def keypress(self, size, key):
+        """
+        Navigate bwtweeen left and right panes
+        """
+
         if key == 'l':
-            self.display_widget.focus_position = 1
+            self.widget.focus_position = 1
 
         if key == 'h':
-            self.display_widget.focus_position = 0
+            self.widget.focus_position = 0
 
         super().keypress(size, key)
 
 def main():
-    title = urwid.Text('Tables')
-    line_box = urwid.LineBox(title)
-
-    tableslist = urwid.SimpleListWalker(get_tables_list())
-    listbox = PostcliListBox(tableslist)
-    # view = urwid.Frame(listbox)
-
-    widgets = [
-        listbox,
-        listbox,
-        listbox,
-    ]
-
-    columns = MainWidget(
-        widgets,
-        dividechars=1,
-        focus_column=0
-    )
-
-    view = urwid.Frame(columns)
     palette = [
-        ('item_active', 'black', 'white', 'standout')
+        ('item_active', 'black', 'white', 'standout'),
+        ('normal_text', 'black', 'white', 'standout'),
     ]
-    loop = urwid.MainLoop(view, palette, unhandled_input=exit_on_q)
-    loop.run()
 
+    layout = urwid.Frame(MainWidget())
+    loop = urwid.MainLoop(layout, palette, unhandled_input=exit_on_q)
+    loop.run()
 
 if __name__ == "__main__":
     main()
