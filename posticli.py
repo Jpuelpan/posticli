@@ -57,25 +57,53 @@ class LeftPanelWidget(urwid.WidgetWrap):
         ))
 
 class RightPanelWidget(urwid.WidgetWrap):
-
     def __init__(self):
         self.text = urwid.Text('No table selected')
 
-        self.widget = urwid.LineBox(
-            urwid.Filler(self.text)
-        ) 
+        name_input = urwid.AttrMap(
+            SelectableText('Table Name'),
+            '',
+            'item_active'
+        )
 
+        self.items = [
+            # urwid.LineBox(name_input),
+        ]
+
+        self.listbox = urwid.ListBox(self.items)
+
+        # pile = urwid.Pile([
+            # self.table_columns
+        # ])
+
+        self.widget = urwid.LineBox(self.listbox) 
         urwid.WidgetWrap.__init__(self, self.widget)
 
-    def keypress(self, size, key):
-        return key
-
-    def redraw(self, table_name):
-        self.text.set_text(table_name)
-
     def on_table_change(self, table_name):
-        self.redraw(table_name)
         self.widget.set_title(table_name)
+        self.items.clear()
+        table_columns = db.get_table_structure(table_name)
+
+        for column in table_columns:
+            # self.items.append(urwid.LineBox(urwid.AttrMap(
+                # SelectableText(column),
+                # '',
+                # 'item_active'
+            # )))
+
+            self.items.append(urwid.AttrMap(
+                SelectableText(column),
+                '',
+                'item_active'
+            ))
+
+            # self.items.append(urwid.Divider(div_char="_", top=1))
+
+        self.listbox.body = self.items
+
+    def keypress(self, size, key):
+        super().keypress(size, key)
+
 
 class MainWidget(urwid.WidgetWrap):
     """
@@ -93,6 +121,7 @@ class MainWidget(urwid.WidgetWrap):
                 (30, left_panel),
                 right_panel
             ],
+            focus_column=1
         )
 
         urwid.WidgetWrap.__init__(self, self.widget)
@@ -102,10 +131,12 @@ class MainWidget(urwid.WidgetWrap):
         Navigate bwtweeen left and right panes
         """
 
-        if key == 'l':
+        # print(key)
+
+        if key == 'right':
             self.widget.focus_position = 1
 
-        if key == 'h':
+        if key == 'left':
             self.widget.focus_position = 0
 
         super().keypress(size, key)

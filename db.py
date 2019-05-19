@@ -8,7 +8,15 @@ def get_table_names():
     return list(map(lambda x: x.split('.')[1].replace('"', ''), tables))
 
 def get_table_structure(table_name):
-    return db.get_attnames(table_name)
+    columns = []
+
+    try:
+        columns = db.get_attnames(table_name)
+    except:
+        pass
+
+    return columns
+
 
 def get_table_contents(table_name):
     # return db.query('SELECT * FROM $1')
