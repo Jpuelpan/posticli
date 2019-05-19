@@ -116,12 +116,24 @@ class MainWidget(urwid.WidgetWrap):
 
         urwid.connect_signal(left_panel, 'change', right_panel.on_table_change)
 
-        self.widget = urwid.Columns(
+        self.columns = urwid.Columns(
             [
                 (30, left_panel),
                 right_panel
             ],
-            focus_column=1
+            focus_column=0
+        )
+
+        self.footer = urwid.AttrMap(urwid.Text('Status'), 'footer', '')
+        # self.widget = urwid.Frame(self.columns, footer=self.footer)
+
+        t = urwid.Text('Posticli', align='center')
+        f = urwid.Filler(t, valign='middle')
+        # f = urwid.PopUpLauncher(t)
+
+        self.widget = urwid.Frame(
+            f,
+            footer=self.footer
         )
 
         urwid.WidgetWrap.__init__(self, self.widget)
@@ -130,14 +142,13 @@ class MainWidget(urwid.WidgetWrap):
         """
         Navigate bwtweeen left and right panes
         """
+        exit_on_q(key)
 
-        # print(key)
+        # if key == 'right':
+            # self.columns.focus_position = 1
 
-        if key == 'right':
-            self.widget.focus_position = 1
-
-        if key == 'left':
-            self.widget.focus_position = 0
+        # if key == 'left':
+            # self.columns.focus_position = 0
 
         super().keypress(size, key)
 
@@ -145,9 +156,10 @@ def main():
     palette = [
         ('item_active', 'black', 'white', 'standout'),
         ('normal_text', 'black', 'white', 'standout'),
+        ('footer', 'black', 'dark cyan', 'standout'),
     ]
 
-    layout = urwid.Frame(MainWidget())
+    layout = MainWidget()
     loop = urwid.MainLoop(layout, palette, unhandled_input=exit_on_q)
     loop.run()
 
