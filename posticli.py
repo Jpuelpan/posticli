@@ -1,6 +1,15 @@
 import urwid
 import db
 import pgpasslib
+import logging
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    filename="debug.log",
+    filemode='a',
+    format='%(asctime)s - [%(levelname)s] - %(message)s',
+    datefmt='%d-%m-%Y %H:%M:%S'
+)
 
 def exit_on_q(input):
     if input in ('q', 'Q'):
@@ -107,6 +116,7 @@ class RightPanelWidget(urwid.WidgetWrap):
 
 class DatabasesListWidget(urwid.WidgetWrap):
     def __init__(self):
+        logging.debug('Databases widget init...')
         self.footer = None
         self.items = self.get_databases_list()
 
@@ -123,10 +133,14 @@ class DatabasesListWidget(urwid.WidgetWrap):
         urwid.WidgetWrap.__init__(self, self.widget)
 
     def get_databases_list(self):
+        logging.debug('Reading .pgpass file')
+        entries = pgpasslib._get_entries()
+        logging.debug('Found %s database entries on .pgpass' % str(len(entries)))
+
         databases = []
         databases.append( urwid.Divider("-") )
 
-        for entry in pgpasslib._get_entries():
+        for entry in entries:
             text = SelectableText(
                 "Name: " + entry.dbname + "\n" +
                 "Host: " + entry.host + ":" + str(entry.port) + "\n" +
@@ -136,7 +150,8 @@ class DatabasesListWidget(urwid.WidgetWrap):
             databases.append( urwid.AttrMap(padding, '', 'item_active') )
             databases.append( urwid.Divider("-") )
 
-        self.footer = urwid.AttrMap(urwid.Text('AA'), 'footer', '')
+        status_text = str(len(entries)) + " databases found on .pgpass"
+        self.footer = urwid.AttrMap(urwid.Padding(urwid.Text(status_text), left=1), 'footer', '')
 
         return databases
 
@@ -199,6 +214,8 @@ def main():
         ('normal_text', 'black', 'white', 'standout'),
         ('footer', 'black', 'dark cyan', 'standout'),
     ]
+
+    logging.debug('Initializing PosticliApp')
 
     layout = PosticliApp()
     loop = urwid.MainLoop(layout, palette, unhandled_input=exit_on_q)
