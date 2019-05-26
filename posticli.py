@@ -107,11 +107,18 @@ class RightPanelWidget(urwid.WidgetWrap):
 
 class DatabasesListWidget(urwid.WidgetWrap):
     def __init__(self):
+        self.footer = None
         self.items = self.get_databases_list()
+
         tableslist = urwid.SimpleListWalker(self.items)
 
         self.listbox = CommonListBoxWidget(tableslist)
-        self.widget = urwid.LineBox(self.listbox, title='Databases') 
+        self.linebox = urwid.LineBox(self.listbox, title='Databases') 
+
+        self.widget = urwid.Frame(
+            self.linebox,
+            footer=self.footer
+        )
 
         urwid.WidgetWrap.__init__(self, self.widget)
 
@@ -129,12 +136,14 @@ class DatabasesListWidget(urwid.WidgetWrap):
             databases.append( urwid.AttrMap(padding, '', 'item_active') )
             databases.append( urwid.Divider("-") )
 
+        self.footer = urwid.AttrMap(urwid.Text('AA'), 'footer', '')
+
         return databases
 
     def keypress(self, size, key):
         super().keypress(size, key)
 
-class MainWidget(urwid.WidgetWrap):
+class PosticliApp(urwid.WidgetWrap):
     """
     Initializes a Columns widgets holding the left and right panels
     """
@@ -153,19 +162,20 @@ class MainWidget(urwid.WidgetWrap):
             focus_column=0
         )
 
-        self.footer = urwid.AttrMap(urwid.Text(''), 'footer', '')
+        # self.footer = urwid.AttrMap(urwid.Text(''), 'footer', '')
         # self.widget = urwid.Frame(self.columns, footer=self.footer)
 
         # t = urwid.Text('Posticli', align='center')
         # f = urwid.Filler(t, valign='middle')
         # f = urwid.PopUpLauncher(t)
 
-        main_widget = urwid.WidgetPlaceholder(DatabasesListWidget())
+        home_widget = DatabasesListWidget()
+        self.widget = urwid.WidgetPlaceholder(home_widget)
 
-        self.widget = urwid.Frame(
-            main_widget,
-            footer=self.footer
-        )
+        # self.widget = urwid.Frame(
+            # main_widget,
+            # footer=self.footer
+        # )
 
         urwid.WidgetWrap.__init__(self, self.widget)
 
@@ -190,7 +200,7 @@ def main():
         ('footer', 'black', 'dark cyan', 'standout'),
     ]
 
-    layout = MainWidget()
+    layout = PosticliApp()
     loop = urwid.MainLoop(layout, palette, unhandled_input=exit_on_q)
     loop.run()
 
