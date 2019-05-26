@@ -1,5 +1,6 @@
 import urwid
 import db
+import pgpasslib
 
 def exit_on_q(input):
     if input in ('q', 'Q'):
@@ -104,6 +105,34 @@ class RightPanelWidget(urwid.WidgetWrap):
     def keypress(self, size, key):
         super().keypress(size, key)
 
+class DatabasesListWidget(urwid.WidgetWrap):
+    def __init__(self):
+        self.items = self.get_databases_list()
+        tableslist = urwid.SimpleListWalker(self.items)
+
+        self.listbox = CommonListBoxWidget(tableslist)
+        self.widget = urwid.LineBox(self.listbox, title='Databases') 
+
+        urwid.WidgetWrap.__init__(self, self.widget)
+
+    def get_databases_list(self):
+        databases = []
+        databases.append( urwid.Divider("-") )
+
+        for entry in pgpasslib._get_entries():
+            text = SelectableText(
+                "Name: " + entry.dbname + "\n" +
+                "Host: " + entry.host + ":" + str(entry.port) + "\n" +
+                "User: " + entry.user
+            )
+            padding = urwid.Padding(text, left=1)
+            databases.append( urwid.AttrMap(padding, '', 'item_active') )
+            databases.append( urwid.Divider("-") )
+
+        return databases
+
+    def keypress(self, size, key):
+        super().keypress(size, key)
 
 class MainWidget(urwid.WidgetWrap):
     """
@@ -124,15 +153,17 @@ class MainWidget(urwid.WidgetWrap):
             focus_column=0
         )
 
-        self.footer = urwid.AttrMap(urwid.Text('Status'), 'footer', '')
+        self.footer = urwid.AttrMap(urwid.Text(''), 'footer', '')
         # self.widget = urwid.Frame(self.columns, footer=self.footer)
 
-        t = urwid.Text('Posticli', align='center')
-        f = urwid.Filler(t, valign='middle')
+        # t = urwid.Text('Posticli', align='center')
+        # f = urwid.Filler(t, valign='middle')
         # f = urwid.PopUpLauncher(t)
 
+        main_widget = urwid.WidgetPlaceholder(DatabasesListWidget())
+
         self.widget = urwid.Frame(
-            f,
+            main_widget,
             footer=self.footer
         )
 
