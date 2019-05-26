@@ -101,6 +101,10 @@ class LeftPanelWidget(urwid.WidgetWrap):
             self.tables
         ))
 
+    def initial_focus(self):
+        if self.tables:
+            urwid.emit_signal(self, 'changed_table', self.tables[0])
+
 class RightPanelWidget(urwid.WidgetWrap):
     def __init__(self, connection):
         self.connection = connection
@@ -157,6 +161,58 @@ class RightPanelWidget(urwid.WidgetWrap):
     def keypress(self, size, key):
         super().keypress(size, key)
 
+class DatabaseExplorerWidget(urwid.WidgetWrap):
+    def __init__(self, connection):
+        logging.debug('Initializing application widgets...')
+
+        left_panel = LeftPanelWidget(connection)
+        right_panel = RightPanelWidget(connection)
+
+        urwid.connect_signal(left_panel, 'changed_table', right_panel.on_table_change)
+        left_panel.initial_focus()
+
+        self.columns = urwid.Columns(
+            [
+                (30, left_panel),
+                right_panel
+            ],
+            focus_column=0
+        )
+
+        self.status_text = urwid.Text('AAAHHHH')
+        self.connection_status = urwid.Text(
+            connection.user + "@" +
+            connection.host + "/" +
+            connection.dbname,
+            align='right'
+        )
+
+        footer = urwid.Columns([
+             urwid.AttrMap(urwid.Padding(self.status_text, left=1), 'footer', ''),
+             urwid.AttrMap(urwid.Padding(self.connection_status, right=1), 'footer', ''),
+        ])
+
+        self.widget = urwid.Frame(
+            self.columns,
+            footer=footer
+        )
+
+        urwid.WidgetWrap.__init__(self, self.widget)
+
+    def keypress(self, size, key):
+        """
+        Navigate bwtweeen left and right panes
+        """
+        exit_on_q(key)
+
+        if key == 'right':
+            self.columns.focus_position = 1
+
+        if key == 'left':
+            self.columns.focus_position = 0
+
+        super().keypress(size, key)
+
 class DatabasesListWidget(urwid.WidgetWrap):
     """
     Displays a list of databases read from .pgpass file using
@@ -206,7 +262,7 @@ class DatabasesListWidget(urwid.WidgetWrap):
             urwid.emit_signal(self, 'connected', connection)
 
         except Exception as e:
-            logging.error('Failed to connect to database. %s' % str(e).strip())
+            logging.error(str(e).strip())
             self.status_text.set_text(str(e).strip())
             self.footer.set_attr_map({ None: 'footer_error' })
 
@@ -263,41 +319,7 @@ class PosticliApp(urwid.WidgetWrap):
         Callback for a successfull connection
         triggered from the DatabasesListWidget
         """
-
-        logging.debug('Initializing application widgets...')
-        left_panel = LeftPanelWidget(connection)
-        right_panel = RightPanelWidget(connection)
-        urwid.connect_signal(left_panel, 'changed_table', right_panel.on_table_change)
-
-        columns = urwid.Columns(
-            [
-                (30, left_panel),
-                right_panel
-            ],
-            focus_column=0
-        )
-
-        footer = urwid.AttrMap(urwid.Text(''), 'footer', '')
-        widget = urwid.Frame(columns, footer=footer)
-
-        self.widget.original_widget = urwid.Frame(
-            widget,
-            # footer=footer
-        )
-
-    def keypress(self, size, key):
-        """
-        Navigate bwtweeen left and right panes
-        """
-        exit_on_q(key)
-
-        # if key == 'right':
-            # self.columns.focus_position = 1
-
-        # if key == 'left':
-            # self.columns.focus_position = 0
-
-        super().keypress(size, key)
+        self.widget.original_widget = DatabaseExplorerWidget(connection)
 
 def main():
     palette = [
