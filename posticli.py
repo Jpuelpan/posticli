@@ -1,5 +1,4 @@
 import urwid
-import db
 import pgpasslib
 import logging
 
@@ -18,6 +17,13 @@ def exit_on_q(input):
         raise urwid.ExitMainLoop()
 
 class SelectableText(urwid.WidgetWrap):
+    """
+    Generates a Text widget that accepts a *value* argument that will be
+    returned on the *chosen* signal callback. If no value is given
+    *None* will be returned
+
+    To trigger the *chosen* signal, the enter key must be pressed.
+    """
     signals = ['chosen']
 
     def __init__(self, text, **args):
@@ -56,9 +62,12 @@ class LeftPanelWidget(urwid.WidgetWrap):
     Creates a list for the current tables of the selected database
     wrapping it in a LineBox
     """
-    signals = ['change']
+    signals = ['changed_table']
 
-    def __init__(self):
+    def __init__(self, connection):
+        self.connection = connection
+        self.tables = []
+
         tableslist = urwid.SimpleListWalker(self.get_tables_list())
         listbox = CommonListBoxWidget(tableslist)
 
@@ -68,8 +77,8 @@ class LeftPanelWidget(urwid.WidgetWrap):
         )
 
         def changed(**args):
-            selected_table, *tail = tableslist.get_focus()[0].base_widget.get_text() 
-            urwid.emit_signal(self, 'change', selected_table)
+            selected_table = tableslist.get_focus()[0].base_widget.value
+            urwid.emit_signal(self, 'changed_table', selected_table)
 
         urwid.connect_signal(tableslist, 'modified', changed)
         urwid.WidgetWrap.__init__(self, self.widget)
@@ -79,13 +88,22 @@ class LeftPanelWidget(urwid.WidgetWrap):
         Returns a list of SelectableText widgets with the table names
         from the database
         """
+
+        self.tables = list(map(
+            lambda x: x.split('.')[1].replace('"', ''),
+            self.connection.get_tables()
+        ))
+
         return list(map(
-            lambda x: urwid.AttrMap(SelectableText(x), '', 'item_active'),
-            db.get_table_names()
+            lambda x: urwid.AttrMap(
+                SelectableText(x, value=x), '', 'item_active'
+            ),
+            self.tables
         ))
 
 class RightPanelWidget(urwid.WidgetWrap):
-    def __init__(self):
+    def __init__(self, connection):
+        self.connection = connection
         self.text = urwid.Text('No table selected')
 
         name_input = urwid.AttrMap(
@@ -108,9 +126,16 @@ class RightPanelWidget(urwid.WidgetWrap):
         urwid.WidgetWrap.__init__(self, self.widget)
 
     def on_table_change(self, table_name):
+        logging.debug('Changed table %s' % table_name)
         self.widget.set_title(table_name)
         self.items.clear()
-        table_columns = db.get_table_structure(table_name)
+
+        table_columns = []
+
+        try:
+            table_columns = self.connection.get_attnames(table_name)
+        except:
+            pass
 
         for column in table_columns:
             # self.items.append(urwid.LineBox(urwid.AttrMap(
@@ -133,6 +158,13 @@ class RightPanelWidget(urwid.WidgetWrap):
         super().keypress(size, key)
 
 class DatabasesListWidget(urwid.WidgetWrap):
+    """
+    Displays a list of databases read from .pgpass file using
+    pgpasslib package. Updates the frame's footer with the connection
+    status and triggers a 'connected' signal for successfull connections.
+    """
+    signals = ['connected']
+
     def __init__(self):
         logging.debug('Databases widget init...')
 
@@ -152,8 +184,13 @@ class DatabasesListWidget(urwid.WidgetWrap):
         urwid.WidgetWrap.__init__(self, self.widget)
 
     def on_chose(self, entry):
-        logging.info('Connecting to databse...')
-        self.status_text.set_text('Connecting to databse %s...' % entry.dbname)
+        """
+        Tries to connect to the given database entry selected from
+        the SelectableText widget. The entry argument is an Entry object
+        from the pgpasslib.
+        """
+        logging.info('Connecting to database...')
+        self.status_text.set_text('Connecting to database %s...' % entry.dbname)
         self.footer.set_attr_map({ None: 'footer' })
 
         try:
@@ -166,12 +203,18 @@ class DatabasesListWidget(urwid.WidgetWrap):
             )
 
             logging.info('Connected to databse %s' % entry.dbname)
+            urwid.emit_signal(self, 'connected', connection)
+
         except Exception as e:
-            logging.error('Failed to connect to databse. %s' % str(e).strip())
-            self.status_text.set_text('Failed to connect to databse. %s' % str(e).strip())
+            logging.error('Failed to connect to database. %s' % str(e).strip())
+            self.status_text.set_text(str(e).strip())
             self.footer.set_attr_map({ None: 'footer_error' })
 
     def get_databases_list(self):
+        """
+        Generates a list SelectableText widgets wrapped in Padding and AttrMap.
+        This will feed a SimpleListWalker widget listing all databases.
+        """
         logging.debug('Reading .pgpass file')
         entries = pgpasslib._get_entries()
         logging.debug('Found %s database entries on .pgpass' % str(len(entries)))
@@ -202,16 +245,31 @@ class DatabasesListWidget(urwid.WidgetWrap):
 
 class PosticliApp(urwid.WidgetWrap):
     """
-    Initializes a Columns widgets holding the left and right panels
+    Starts home widget with the databases list from the current user .pgpass file
+    Listens for a successfull connection and change placeholder widget
+    with a columns widget listing database tables on the left
+    and table contents on the right
     """
 
     def __init__(self):
-        left_panel = LeftPanelWidget()
-        right_panel = RightPanelWidget()
+        databases_list = DatabasesListWidget()
+        self.widget = urwid.WidgetPlaceholder(databases_list)
 
-        urwid.connect_signal(left_panel, 'change', right_panel.on_table_change)
+        urwid.connect_signal(databases_list, 'connected', self.on_connected)
+        urwid.WidgetWrap.__init__(self, self.widget)
 
-        self.columns = urwid.Columns(
+    def on_connected(self, connection):
+        """
+        Callback for a successfull connection
+        triggered from the DatabasesListWidget
+        """
+
+        logging.debug('Initializing application widgets...')
+        left_panel = LeftPanelWidget(connection)
+        right_panel = RightPanelWidget(connection)
+        urwid.connect_signal(left_panel, 'changed_table', right_panel.on_table_change)
+
+        columns = urwid.Columns(
             [
                 (30, left_panel),
                 right_panel
@@ -219,22 +277,13 @@ class PosticliApp(urwid.WidgetWrap):
             focus_column=0
         )
 
-        # self.footer = urwid.AttrMap(urwid.Text(''), 'footer', '')
-        # self.widget = urwid.Frame(self.columns, footer=self.footer)
+        footer = urwid.AttrMap(urwid.Text(''), 'footer', '')
+        widget = urwid.Frame(columns, footer=footer)
 
-        # t = urwid.Text('Posticli', align='center')
-        # f = urwid.Filler(t, valign='middle')
-        # f = urwid.PopUpLauncher(t)
-
-        home_widget = DatabasesListWidget()
-        self.widget = urwid.WidgetPlaceholder(home_widget)
-
-        # self.widget = urwid.Frame(
-            # main_widget,
-            # footer=self.footer
-        # )
-
-        urwid.WidgetWrap.__init__(self, self.widget)
+        self.widget.original_widget = urwid.Frame(
+            widget,
+            # footer=footer
+        )
 
     def keypress(self, size, key):
         """
