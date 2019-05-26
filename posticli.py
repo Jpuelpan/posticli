@@ -3,6 +3,8 @@ import db
 import pgpasslib
 import logging
 
+from pg import DB
+
 logging.basicConfig(
     level=logging.DEBUG,
     filename="debug.log",
@@ -15,11 +17,27 @@ def exit_on_q(input):
     if input in ('q', 'Q'):
         raise urwid.ExitMainLoop()
 
-class SelectableText(urwid.Text):
+class SelectableText(urwid.WidgetWrap):
+    signals = ['chosen']
+
+    def __init__(self, text, **args):
+        self.value = args.get('value', None)
+
+        if self.value:
+            del args['value'] 
+
+        self.widget = urwid.Text(text, **args)
+        urwid.WidgetWrap.__init__(self, self.widget)
+
     def selectable(self):
         return True
 
     def keypress(self, size, key):
+        # logging.debug('Pressed key %s on %s' % (key, self))
+
+        if key == 'enter':
+            urwid.emit_signal(self, 'chosen', self.value)
+
         return key
 
 class CommonListBoxWidget(urwid.ListBox):
@@ -117,20 +135,41 @@ class RightPanelWidget(urwid.WidgetWrap):
 class DatabasesListWidget(urwid.WidgetWrap):
     def __init__(self):
         logging.debug('Databases widget init...')
-        self.footer = None
-        self.items = self.get_databases_list()
 
+        self.status_text = urwid.Text("")
+        self.items = self.get_databases_list()
         tableslist = urwid.SimpleListWalker(self.items)
 
         self.listbox = CommonListBoxWidget(tableslist)
-        self.linebox = urwid.LineBox(self.listbox, title='Databases') 
+        self.container = urwid.LineBox(self.listbox, title='Databases') 
+        self.footer = urwid.AttrMap(urwid.Padding(self.status_text, left=1), 'footer', '')
 
         self.widget = urwid.Frame(
-            self.linebox,
+            self.container,
             footer=self.footer
         )
 
         urwid.WidgetWrap.__init__(self, self.widget)
+
+    def on_chose(self, entry):
+        logging.info('Connecting to databse...')
+        self.status_text.set_text('Connecting to databse %s...' % entry.dbname)
+        self.footer.set_attr_map({ None: 'footer' })
+
+        try:
+            connection = DB(
+                dbname=entry.dbname,
+                host=entry.host,
+                port=entry.port,
+                user=entry.user,
+                passwd=entry.password
+            )
+
+            logging.info('Connected to databse %s' % entry.dbname)
+        except Exception as e:
+            logging.error('Failed to connect to databse. %s' % str(e).strip())
+            self.status_text.set_text('Failed to connect to databse. %s' % str(e).strip())
+            self.footer.set_attr_map({ None: 'footer_error' })
 
     def get_databases_list(self):
         logging.debug('Reading .pgpass file')
@@ -144,14 +183,17 @@ class DatabasesListWidget(urwid.WidgetWrap):
             text = SelectableText(
                 "Name: " + entry.dbname + "\n" +
                 "Host: " + entry.host + ":" + str(entry.port) + "\n" +
-                "User: " + entry.user
+                "User: " + entry.user,
+                value=entry
             )
+
+            urwid.connect_signal(text, 'chosen', self.on_chose)
+
             padding = urwid.Padding(text, left=1)
             databases.append( urwid.AttrMap(padding, '', 'item_active') )
             databases.append( urwid.Divider("-") )
 
-        status_text = str(len(entries)) + " databases found on .pgpass"
-        self.footer = urwid.AttrMap(urwid.Padding(urwid.Text(status_text), left=1), 'footer', '')
+        self.status_text.set_text(str(len(entries)) + " databases found on .pgpass")
 
         return databases
 
@@ -213,6 +255,7 @@ def main():
         ('item_active', 'black', 'white', 'standout'),
         ('normal_text', 'black', 'white', 'standout'),
         ('footer', 'black', 'dark cyan', 'standout'),
+        ('footer_error', 'white', 'dark red', 'standout'),
     ]
 
     logging.debug('Initializing PosticliApp')
