@@ -105,58 +105,132 @@ class LeftPanelWidget(urwid.WidgetWrap):
         if self.tables:
             urwid.emit_signal(self, 'changed_table', self.tables[0])
 
-class RightPanelWidget(urwid.WidgetWrap):
-    def __init__(self, connection):
-        self.connection = connection
-        self.text = urwid.Text('No table selected')
+class TableSchemaWidget(urwid.WidgetWrap):
+    def __init__(self, connection, table_name):
+        self.widget = urwid.Text('AA')
 
-        name_input = urwid.AttrMap(
-            SelectableText('Table Name'),
-            '',
-            'item_active'
-        )
+        # self.items.clear()
+        # table_columns = []
 
-        self.items = [
-            # urwid.LineBox(name_input),
-        ]
+        # try:
+            # table_columns = self.connection.get_attnames(table_name)
+        # except:
+            # pass
 
-        self.listbox = urwid.ListBox(self.items)
+        # for column in table_columns:
+            # # self.items.append(urwid.LineBox(urwid.AttrMap(
+                # # SelectableText(column),
+                # # '',
+                # # 'item_active'
+            # # )))
 
-        # pile = urwid.Pile([
-            # self.table_columns
-        # ])
-
-        self.widget = urwid.LineBox(self.listbox) 
-        urwid.WidgetWrap.__init__(self, self.widget)
-
-    def on_table_change(self, table_name):
-        logging.debug('Changed table %s' % table_name)
-        self.widget.set_title(table_name)
-        self.items.clear()
-
-        table_columns = []
-
-        try:
-            table_columns = self.connection.get_attnames(table_name)
-        except:
-            pass
-
-        for column in table_columns:
-            # self.items.append(urwid.LineBox(urwid.AttrMap(
+            # self.items.append(urwid.AttrMap(
                 # SelectableText(column),
                 # '',
                 # 'item_active'
-            # )))
+            # ))
 
-            self.items.append(urwid.AttrMap(
-                SelectableText(column),
-                '',
-                'item_active'
-            ))
+            # # self.items.append(urwid.Divider(div_char="_", top=1))
 
-            # self.items.append(urwid.Divider(div_char="_", top=1))
+        # self.listbox.body = self.items
+        urwid.WidgetWrap.__init__(self, self.widget)
 
-        self.listbox.body = self.items
+class TableContentsWidget(urwid.WidgetWrap):
+    def __init__(self, connection, table_name = None):
+        self.connection = connection
+        self.table_name = table_name
+        self.column_names = []
+
+        logging.debug('Building data rows for table %s' % table_name)
+
+        self.data_rows = self.get_table_rows()
+        self.listbox = urwid.ListBox(self.data_rows)
+
+        urwid.WidgetWrap.__init__(self, self.listbox)
+
+    def get_table_rows(self):
+        rows = []
+
+        if not self.table_name:
+            return rows
+
+        try:
+            escaped_name = self.connection.escape_identifier(self.table_name)
+            self.column_names = self.connection.get_attnames(self.table_name)
+
+            count_sql = "SELECT COUNT(*) FROM %s" % escaped_name
+            logging.debug(count_sql)
+
+            total_rows = self.connection.query(count_sql).getresult()[0][0]
+
+            data = self.connection.get_as_list(
+                escaped_name,
+                limit=10
+            )
+
+            # Generate headers
+            headers = []
+            for column_name in self.column_names:
+                headers.append(
+                    urwid.AttrMap(urwid.Text(column_name, wrap="clip"), '', 'item_active')
+                )
+
+            rows.append(urwid.Columns(headers, dividechars=1))
+
+            for row in data:
+                columns = []
+
+                for column_name in self.column_names:
+                    value = getattr(row, column_name) or ''
+
+                    columns.append(
+                        urwid.AttrMap(
+                            SelectableText(str(value), wrap="clip"),
+                            '',
+                            'tem_active'
+                        )
+                    )
+
+                rows.append(urwid.Columns(columns, dividechars=1))
+
+        except Exception as e:
+            logging.error(e)
+
+        return rows
+
+class RightPanelWidget(urwid.WidgetWrap):
+    def __init__(self, connection):
+        self.connection = connection
+        self.view = 'Contents'
+        self._cached_tables = {}
+
+        table_contents = TableContentsWidget(connection, None)
+
+        self.widget = urwid.WidgetPlaceholder(
+            urwid.LineBox(table_contents, title="No table selected")
+        )
+
+        urwid.WidgetWrap.__init__(self, self.widget)
+
+    def on_table_change(self, table_name):
+        logging.debug('Changed table to %s' % table_name)
+        cached_item = self._cached_tables.get(table_name, None)
+
+        if cached_item:
+            logging.debug('Found cached table contents %s' % table_name)
+            self.widget.original_widget = cached_item
+        else:
+            logging.debug('No cached table content found for %s' % table_name)
+
+            title = table_name + " [" + self.view + "]"
+
+            table_contents = urwid.LineBox(
+                TableContentsWidget(self.connection, table_name),
+                title=title
+            )
+
+            self._cached_tables[table_name] = table_contents
+            self.widget.original_widget = table_contents
 
     def keypress(self, size, key):
         super().keypress(size, key)
@@ -179,7 +253,7 @@ class DatabaseExplorerWidget(urwid.WidgetWrap):
             focus_column=0
         )
 
-        self.status_text = urwid.Text('AAAHHHH')
+        self.status_text = urwid.Text('')
         self.connection_status = urwid.Text(
             connection.user + "@" +
             connection.host + "/" +
