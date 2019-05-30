@@ -165,7 +165,7 @@ class TableContentsWidget(urwid.WidgetWrap):
 
             data = self.connection.get_as_list(
                 escaped_name,
-                limit=10
+                limit=100
             )
 
             # Generate headers
@@ -258,8 +258,12 @@ class DatabaseExplorerWidget(urwid.WidgetWrap):
             connection.user + "@" +
             connection.host + "/" +
             connection.dbname,
-            align='right'
+            align='center'
         )
+
+        header = urwid.Columns([
+             urwid.AttrMap(self.connection_status, 'header', ''),
+        ])
 
         footer = urwid.Columns([
              urwid.AttrMap(urwid.Padding(self.status_text, left=1), 'footer', ''),
@@ -268,6 +272,7 @@ class DatabaseExplorerWidget(urwid.WidgetWrap):
 
         self.widget = urwid.Frame(
             self.columns,
+            header=header,
             footer=footer
         )
 
