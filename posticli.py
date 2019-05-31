@@ -12,6 +12,10 @@ logging.basicConfig(
     datefmt='%d-%m-%Y %H:%M:%S'
 )
 
+config = {
+  'PAGE_LIMIT': 100
+}
+
 def exit_on_q(input):
     if input in ('q', 'Q'):
         raise urwid.ExitMainLoop()
@@ -64,7 +68,7 @@ class LeftPanelWidget(urwid.WidgetWrap):
     """
     signals = ['changed_table']
 
-    def __init__(self, connection):
+    def __init__(self, connection, **args):
         self.connection = connection
         self.tables = []
 
@@ -136,6 +140,8 @@ class TableSchemaWidget(urwid.WidgetWrap):
         urwid.WidgetWrap.__init__(self, self.widget)
 
 class TableContentsWidget(urwid.WidgetWrap):
+    total_rows = 0
+
     def __init__(self, connection, table_name = None):
         self.connection = connection
         self.table_name = table_name
@@ -161,11 +167,11 @@ class TableContentsWidget(urwid.WidgetWrap):
             count_sql = "SELECT COUNT(*) FROM %s" % escaped_name
             logging.debug(count_sql)
 
-            total_rows = self.connection.query(count_sql).getresult()[0][0]
+            self.total_rows = self.connection.query(count_sql).getresult()[0][0]
 
             data = self.connection.get_as_list(
                 escaped_name,
-                limit=100
+                limit=config.get('PAGE_LIMIT', 100)
             )
 
             # Generate headers
@@ -199,10 +205,11 @@ class TableContentsWidget(urwid.WidgetWrap):
         return rows
 
 class RightPanelWidget(urwid.WidgetWrap):
-    def __init__(self, connection):
+    def __init__(self, connection, **args):
         self.connection = connection
         self.view = 'Contents'
         self._cached_tables = {}
+        self.footer_status = args['footer_status']
 
         table_contents = TableContentsWidget(connection, None)
 
@@ -215,22 +222,39 @@ class RightPanelWidget(urwid.WidgetWrap):
     def on_table_change(self, table_name):
         logging.debug('Changed table to %s' % table_name)
         cached_item = self._cached_tables.get(table_name, None)
+        rows_counter = ''
 
         if cached_item:
             logging.debug('Found cached table contents %s' % table_name)
             self.widget.original_widget = cached_item
+
+            rows_counter = ('%s total rows' %
+                (
+                    format(cached_item.original_widget.total_rows, ',d')
+                )
+            )
         else:
             logging.debug('No cached table content found for %s' % table_name)
 
             title = table_name + " [" + self.view + "]"
+            table_contents = TableContentsWidget(self.connection, table_name)
+            logging.debug(table_contents.total_rows)
 
-            table_contents = urwid.LineBox(
+            contents_wrap = urwid.LineBox(
                 TableContentsWidget(self.connection, table_name),
                 title=title
             )
 
-            self._cached_tables[table_name] = table_contents
-            self.widget.original_widget = table_contents
+            rows_counter = ('%s total rows' %
+                (
+                    format(table_contents.total_rows, ',d')
+                )
+            )
+
+            self._cached_tables[table_name] = contents_wrap
+            self.widget.original_widget = contents_wrap
+
+        self.footer_status.set_text(rows_counter)
 
     def keypress(self, size, key):
         super().keypress(size, key)
@@ -238,9 +262,16 @@ class RightPanelWidget(urwid.WidgetWrap):
 class DatabaseExplorerWidget(urwid.WidgetWrap):
     def __init__(self, connection):
         logging.debug('Initializing application widgets...')
+        self.footer_status = urwid.Text('')
 
-        left_panel = LeftPanelWidget(connection)
-        right_panel = RightPanelWidget(connection)
+        left_panel = LeftPanelWidget(
+            connection,
+            footer_status=self.footer_status
+        )
+        right_panel = RightPanelWidget(
+            connection,
+            footer_status=self.footer_status
+        )
 
         urwid.connect_signal(left_panel, 'changed_table', right_panel.on_table_change)
         left_panel.initial_focus()
@@ -253,7 +284,6 @@ class DatabaseExplorerWidget(urwid.WidgetWrap):
             focus_column=0
         )
 
-        self.status_text = urwid.Text('')
         self.connection_status = urwid.Text(
             connection.user + "@" +
             connection.host + "/" +
@@ -266,8 +296,7 @@ class DatabaseExplorerWidget(urwid.WidgetWrap):
         ])
 
         footer = urwid.Columns([
-             urwid.AttrMap(urwid.Padding(self.status_text, left=1), 'footer', ''),
-             urwid.AttrMap(urwid.Padding(self.connection_status, right=1), 'footer', ''),
+             urwid.AttrMap(urwid.Padding(self.footer_status, left=1), 'footer', ''),
         ])
 
         self.widget = urwid.Frame(
@@ -406,6 +435,7 @@ def main():
         ('normal_text', 'black', 'white', 'standout'),
         ('footer', 'black', 'dark cyan', 'standout'),
         ('footer_error', 'white', 'dark red', 'standout'),
+        ('header', '', 'dark blue', 'standout'),
     ]
 
     logging.debug('Initializing PosticliApp')
