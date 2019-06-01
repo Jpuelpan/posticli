@@ -1,7 +1,10 @@
 # PostiCLI
 
-An attempt to replicate some [https://eggerapps.at/postico/](Postico) features to the terminal
-Reads your `.pgpass` file and list the available PostgreSQL databases for connection
+An attempt to replicate some [https://eggerapps.at/postico/](Postico) features to the terminal.
+
+It works by reading your `.pgpass` file and list the available PostgreSQL databases for connection.
+Then, with the help of PyGreSQL package it establishes a connection to run queries, such as listing
+the database's tables and table contents.
 
 # TODO
 
