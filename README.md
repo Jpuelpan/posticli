@@ -7,11 +7,11 @@ Reads your `.pgpass` file and list the available PostgreSQL databases for connec
 
 - [x] List databases from .pgpass
 - [X] Display table contents
-- [] Display table schema
-- [] Navigate through table rows
-- [] Table rows pagination
-- [] Expand single row to have a more detailed view
-- [] Run SQL Queries
+- [ ] Display table schema
+- [ ] Navigate through table rows
+- [ ] Table rows pagination
+- [ ] Expand single row to have a more detailed view
+- [ ] Run SQL Queries
 
 # Development
 
