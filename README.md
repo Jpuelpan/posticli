@@ -1,6 +1,6 @@
 # PostiCLI
 
-An attempt to replicate some (https://eggerapps.at/postico/)[Postico] features to the terminal
+An attempt to replicate some [https://eggerapps.at/postico/](Postico) features to the terminal
 Reads your `.pgpass` file and list the available PostgreSQL databases for connection
 
 # TODO
@@ -29,4 +29,17 @@ $ mkvirtualenv --python=/usr/bin/python3 posticli
 $ workon posticli
 $ pip install -r requirements.txt
 ```
+
+Run the app with:
+
+```
+$ python ./posticli.py
+```
+
+To see the logs:
+
+```
+$ tail -f debug.log
+```
+
 
