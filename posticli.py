@@ -141,6 +141,8 @@ class TableSchemaWidget(urwid.WidgetWrap):
 
 class TableContentsWidget(urwid.WidgetWrap):
     total_rows = 0
+    current_rows = 0
+    rows_limit = config.get('PAGE_LIMIT', 100)
 
     def __init__(self, connection, table_name = None):
         self.connection = connection
@@ -171,8 +173,10 @@ class TableContentsWidget(urwid.WidgetWrap):
 
             data = self.connection.get_as_list(
                 escaped_name,
-                limit=config.get('PAGE_LIMIT', 100)
+                limit=self.rows_limit
             )
+
+            self.current_rows = len(data)
 
             # Generate headers
             headers = []
@@ -228,10 +232,9 @@ class RightPanelWidget(urwid.WidgetWrap):
             logging.debug('Found cached table contents %s' % table_name)
             self.widget.original_widget = cached_item
 
-            rows_counter = ('%s total rows' %
-                (
-                    format(cached_item.original_widget.total_rows, ',d')
-                )
+            rows_counter = self.build_status_text(
+                cached_item.original_widget.current_rows,
+                cached_item.original_widget.total_rows
             )
         else:
             logging.debug('No cached table content found for %s' % table_name)
@@ -245,16 +248,23 @@ class RightPanelWidget(urwid.WidgetWrap):
                 title=title
             )
 
-            rows_counter = ('%s total rows' %
-                (
-                    format(table_contents.total_rows, ',d')
-                )
+            rows_counter = self.build_status_text(
+                table_contents.current_rows,
+                table_contents.total_rows
             )
 
             self._cached_tables[table_name] = contents_wrap
             self.widget.original_widget = contents_wrap
 
         self.footer_status.set_text(rows_counter)
+
+    def build_status_text(self, current_rows, table_rows):
+        return ('%s of %s total rows' %
+            (
+                format(current_rows, ',d'),
+                format(table_rows, ',d')
+            )
+        )
 
     def keypress(self, size, key):
         super().keypress(size, key)
