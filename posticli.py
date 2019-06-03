@@ -77,6 +77,7 @@ class LeftPanelWidget(urwid.WidgetWrap):
         self.connection = connection
         self.tables = []
         self.searching = False
+        self.search_matches_idx = []
         self.search_term = ''
 
         self.tableslist = urwid.SimpleListWalker(self.get_tables_list())
@@ -122,10 +123,12 @@ class LeftPanelWidget(urwid.WidgetWrap):
         and highlights the matched items
         """
         logging.debug('Filtering tables with %s' % self.search_term)
+        self.search_matches_idx = []
 
         for idx, table_name in enumerate(self.tables):
             if self.search_term and self.search_term in table_name:
                 self.tableslist[idx].set_attr_map({ None: 'item_highlight' })
+                self.search_matches_idx.append(idx)
             else:
                 self.tableslist[idx].set_attr_map({ 'item_highlight': None })
 
@@ -146,7 +149,15 @@ class LeftPanelWidget(urwid.WidgetWrap):
             if key == 'backspace':
                 self.search_term = self.search_term[0:-1]
             elif key == 'enter':
-                pass
+                # Sets list focus on the first matched item
+                if self.search_matches_idx:
+                    self.tableslist.set_focus(self.search_matches_idx[0])
+
+                    logging.debug('Search tables disabled')
+                    self.searching = False
+                    self.search_term = ''
+                    urwid.emit_signal(self, 'search_end')
+
             else:
                 self.search_term = self.search_term + key
 
