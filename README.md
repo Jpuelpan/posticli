@@ -10,6 +10,8 @@ the database's tables and table contents.
 
 - [x] List databases from .pgpass
 - [X] Display table contents
+- [X] List database tables
+- [X] Search tables and navigate matches with *n* shortcut
 - [ ] Display table schema
 - [ ] Navigate through table rows
 - [ ] Table rows pagination
