@@ -126,7 +126,7 @@ class LeftPanelWidget(urwid.WidgetWrap):
         self.search_matches_idx = []
 
         for idx, table_name in enumerate(self.tables):
-            if self.search_term and self.search_term in table_name:
+            if self.search_term and self.search_term.lower() in table_name.lower():
                 self.tableslist[idx].set_attr_map({ None: 'item_highlight' })
                 self.search_matches_idx.append(idx)
             else:
@@ -157,6 +157,7 @@ class LeftPanelWidget(urwid.WidgetWrap):
                     self.searching = False
                     self.search_term = ''
                     urwid.emit_signal(self, 'search_end')
+                    return
 
             else:
                 self.search_term = self.search_term + key
