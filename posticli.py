@@ -78,6 +78,7 @@ class LeftPanelWidget(urwid.WidgetWrap):
         self.tables = []
         self.searching = False
         self.search_matches_idx = []
+        self.search_match_focus = 0
         self.search_term = ''
 
         self.tableslist = urwid.SimpleListWalker(self.get_tables_list())
@@ -139,6 +140,23 @@ class LeftPanelWidget(urwid.WidgetWrap):
             urwid.emit_signal(self, 'search_start')
             return
 
+        if not self.searching and key == 'n' and self.search_matches_idx:
+            next_match_idx = self.search_match_focus + 1
+
+            if next_match_idx == len(self.search_matches_idx):
+                next_match_idx = 0
+                logging.debug('End of matches, restarting to the first one')
+            else:
+                logging.debug('Moving to the next match: %s' % next_match_idx)
+
+
+            self.tableslist.set_focus(
+                self.search_matches_idx[next_match_idx]
+            )
+
+            self.search_match_focus = next_match_idx
+
+
         if self.searching and key == 'esc':
             logging.debug('Search tables disabled')
             self.searching = False
@@ -157,8 +175,8 @@ class LeftPanelWidget(urwid.WidgetWrap):
                     self.searching = False
                     self.search_term = ''
                     urwid.emit_signal(self, 'search_end')
-                    return
 
+                    return
             else:
                 self.search_term = self.search_term + key
 
