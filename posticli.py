@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import urwid
 import pgpasslib
 import logging
@@ -61,16 +63,37 @@ class CommonListBoxWidget(urwid.ListBox):
 
         super().keypress(size, key)
 
+class SearchInputWidget(urwid.WidgetWrap):
+    def __init__(self, options):
+        logging.debug('Search initialized!')
+
+        search_input = urwid.Edit('/')
+
+        self.widget = urwid.AttrMap(
+            urwid.Padding(search_input),
+            'footer',
+            ''
+        )
+
+        urwid.WidgetWrap.__init__(self, self.widget)
+
+    def selectable(self):
+        return True
+
+    def keypress(self, size, key):
+        logging.debug('AHAHHA')
+
 class LeftPanelWidget(urwid.WidgetWrap):
     """
     Creates a list for the current tables of the selected database
     wrapping it in a LineBox
     """
-    signals = ['changed_table']
+    signals = ['changed_table', 'search_start', 'search_end']
 
     def __init__(self, connection, **args):
         self.connection = connection
         self.tables = []
+        self.searching = False
 
         tableslist = urwid.SimpleListWalker(self.get_tables_list())
         listbox = CommonListBoxWidget(tableslist)
@@ -108,6 +131,26 @@ class LeftPanelWidget(urwid.WidgetWrap):
     def initial_focus(self):
         if self.tables:
             urwid.emit_signal(self, 'changed_table', self.tables[0])
+
+    # def on_search_match(self, matched_items):
+        # loggin.debug('Matched search!')
+
+    def keypress(self, size, key):
+        if not self.searching and key == '/':
+            self.searching = True
+            logging.debug('Search tables enabled!')
+            urwid.emit_signal(self, 'search_start', None)
+
+        if self.searching and key == 'esc':
+            self.searching = False
+            logging.debug('Search tables disabled!')
+            urwid.emit_signal(self, 'search_end', None)
+
+        if self.searching:
+            logging.debug(key)
+        else:
+            super().keypress(size, key)
+
 
 class TableSchemaWidget(urwid.WidgetWrap):
     def __init__(self, connection, table_name):
@@ -273,6 +316,7 @@ class DatabaseExplorerWidget(urwid.WidgetWrap):
     def __init__(self, connection):
         logging.debug('Initializing application widgets...')
         self.footer_status = urwid.Text('')
+        self.searching = False
 
         left_panel = LeftPanelWidget(
             connection,
@@ -284,6 +328,9 @@ class DatabaseExplorerWidget(urwid.WidgetWrap):
         )
 
         urwid.connect_signal(left_panel, 'changed_table', right_panel.on_table_change)
+        urwid.connect_signal(left_panel, 'search_start', self.on_search_start)
+        urwid.connect_signal(left_panel, 'search_end', self.on_search_end)
+
         left_panel.initial_focus()
 
         self.columns = urwid.Columns(
@@ -305,31 +352,43 @@ class DatabaseExplorerWidget(urwid.WidgetWrap):
              urwid.AttrMap(self.connection_status, 'header', ''),
         ])
 
-        footer = urwid.Columns([
+        self.footer = urwid.Columns([
              urwid.AttrMap(urwid.Padding(self.footer_status, left=1), 'footer', ''),
         ])
 
         self.widget = urwid.Frame(
             self.columns,
             header=header,
-            footer=footer
+            footer=self.footer
         )
 
         urwid.WidgetWrap.__init__(self, self.widget)
+
+    def on_search_start(self, a):
+        self.searching = True
+        logging.debug('Start searching')
+
+    def on_search_end(self, a):
+        self.searching = False
+        logging.debug('Stop searching')
 
     def keypress(self, size, key):
         """
         Navigate bwtweeen left and right panes
         """
-        exit_on_q(key)
+        if not self.searching:
+            exit_on_q(key)
 
-        if key == 'right':
-            self.columns.focus_position = 1
+            if key == 'right':
+                self.columns.focus_position = 1
 
-        if key == 'left':
-            self.columns.focus_position = 0
+            if key == 'left':
+                self.columns.focus_position = 0
 
-        super().keypress(size, key)
+            super().keypress(size, key)
+        else:
+            logging.debug('Search input %s' % key)
+            super().keypress(size, key)
 
 class DatabasesListWidget(urwid.WidgetWrap):
     """
