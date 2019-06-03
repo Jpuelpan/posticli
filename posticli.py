@@ -63,40 +63,24 @@ class CommonListBoxWidget(urwid.ListBox):
 
         super().keypress(size, key)
 
-class SearchInputWidget(urwid.WidgetWrap):
-    def __init__(self, options):
-        logging.debug('Search initialized!')
-
-        search_input = urwid.Edit('/')
-
-        self.widget = urwid.AttrMap(
-            urwid.Padding(search_input),
-            'footer',
-            ''
-        )
-
-        urwid.WidgetWrap.__init__(self, self.widget)
-
-    def selectable(self):
-        return True
-
-    def keypress(self, size, key):
-        logging.debug('AHAHHA')
-
 class LeftPanelWidget(urwid.WidgetWrap):
     """
     Creates a list for the current tables of the selected database
     wrapping it in a LineBox
     """
-    signals = ['changed_table', 'search_start', 'search_end']
+    signals = [
+        'changed_table', 'search_start',
+        'search_end', 'search_term'
+    ]
 
     def __init__(self, connection, **args):
         self.connection = connection
         self.tables = []
         self.searching = False
+        self.search_term = ''
 
-        tableslist = urwid.SimpleListWalker(self.get_tables_list())
-        listbox = CommonListBoxWidget(tableslist)
+        self.tableslist = urwid.SimpleListWalker(self.get_tables_list())
+        listbox = CommonListBoxWidget(self.tableslist)
 
         self.widget = urwid.LineBox(
             listbox,
@@ -104,10 +88,10 @@ class LeftPanelWidget(urwid.WidgetWrap):
         )
 
         def changed(**args):
-            selected_table = tableslist.get_focus()[0].base_widget.value
+            selected_table = self.tableslist.get_focus()[0].base_widget.value
             urwid.emit_signal(self, 'changed_table', selected_table)
 
-        urwid.connect_signal(tableslist, 'modified', changed)
+        urwid.connect_signal(self.tableslist, 'modified', changed)
         urwid.WidgetWrap.__init__(self, self.widget)
 
     def get_tables_list(self):
@@ -132,22 +116,43 @@ class LeftPanelWidget(urwid.WidgetWrap):
         if self.tables:
             urwid.emit_signal(self, 'changed_table', self.tables[0])
 
-    # def on_search_match(self, matched_items):
-        # loggin.debug('Matched search!')
+    def filter_tables(self):
+        """
+        Search the *self.search_term* on the current tables list
+        and highlights the matched items
+        """
+        logging.debug('Filtering tables with %s' % self.search_term)
+
+        for idx, table_name in enumerate(self.tables):
+            if self.search_term and self.search_term in table_name:
+                self.tableslist[idx].set_attr_map({ None: 'item_highlight' })
+            else:
+                self.tableslist[idx].set_attr_map({ 'item_highlight': None })
 
     def keypress(self, size, key):
         if not self.searching and key == '/':
+            logging.debug('Search tables enabled')
             self.searching = True
-            logging.debug('Search tables enabled!')
-            urwid.emit_signal(self, 'search_start', None)
+            urwid.emit_signal(self, 'search_start')
+            return
 
         if self.searching and key == 'esc':
+            logging.debug('Search tables disabled')
             self.searching = False
-            logging.debug('Search tables disabled!')
-            urwid.emit_signal(self, 'search_end', None)
+            self.search_term = ''
+            urwid.emit_signal(self, 'search_end')
 
         if self.searching:
-            logging.debug(key)
+            if key == 'backspace':
+                self.search_term = self.search_term[0:-1]
+            elif key == 'enter':
+                pass
+            else:
+                self.search_term = self.search_term + key
+
+            self.filter_tables()
+            urwid.emit_signal(self, 'search_term', self.search_term)
+
         else:
             super().keypress(size, key)
 
@@ -316,12 +321,14 @@ class DatabaseExplorerWidget(urwid.WidgetWrap):
     def __init__(self, connection):
         logging.debug('Initializing application widgets...')
         self.footer_status = urwid.Text('')
+        self._cached_footer_status = ''
         self.searching = False
 
         left_panel = LeftPanelWidget(
             connection,
             footer_status=self.footer_status
         )
+
         right_panel = RightPanelWidget(
             connection,
             footer_status=self.footer_status
@@ -330,6 +337,7 @@ class DatabaseExplorerWidget(urwid.WidgetWrap):
         urwid.connect_signal(left_panel, 'changed_table', right_panel.on_table_change)
         urwid.connect_signal(left_panel, 'search_start', self.on_search_start)
         urwid.connect_signal(left_panel, 'search_end', self.on_search_end)
+        urwid.connect_signal(left_panel, 'search_term', self.on_search_term)
 
         left_panel.initial_focus()
 
@@ -364,13 +372,20 @@ class DatabaseExplorerWidget(urwid.WidgetWrap):
 
         urwid.WidgetWrap.__init__(self, self.widget)
 
-    def on_search_start(self, a):
-        self.searching = True
+    def on_search_start(self):
         logging.debug('Start searching')
+        self.searching = True
+        self._cached_footer_status = self.footer_status.get_text()[0]
+        self.footer_status.set_text('/')
 
-    def on_search_end(self, a):
-        self.searching = False
+    def on_search_end(self):
         logging.debug('Stop searching')
+        self.searching = False
+        self.footer_status.set_text(self._cached_footer_status)
+        self._cached_footer_status = ''
+
+    def on_search_term(self, term):
+        self.footer_status.set_text("/" + term)
 
     def keypress(self, size, key):
         """
@@ -386,8 +401,8 @@ class DatabaseExplorerWidget(urwid.WidgetWrap):
                 self.columns.focus_position = 0
 
             super().keypress(size, key)
+
         else:
-            logging.debug('Search input %s' % key)
             super().keypress(size, key)
 
 class DatabasesListWidget(urwid.WidgetWrap):
@@ -501,6 +516,7 @@ class PosticliApp(urwid.WidgetWrap):
 def main():
     palette = [
         ('item_active', 'black', 'white', 'standout'),
+        ('item_highlight', 'black', 'yellow', 'standout'),
         ('normal_text', 'black', 'white', 'standout'),
         ('footer', 'black', 'dark cyan', 'standout'),
         ('footer_error', 'white', 'dark red', 'standout'),
